@@ -18,7 +18,14 @@ class PetViewSet(viewsets.ModelViewSet):
     serializer_class = PetSerializer
 
     def get_queryset(self):
-        return Pet.objects.filter(owner=self.request.user).order_by('id')
+        user = self.request.user
+        if getattr(user, 'role', None) == 'ADMIN':
+            return Pet.objects.all().order_by('id')
+        if getattr(user, 'role', None) == 'VET':
+            return Pet.objects.filter(
+                appointments__veterinarian=user,
+            ).distinct().order_by('id')
+        return Pet.objects.filter(owner=user).order_by('id')
 
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)

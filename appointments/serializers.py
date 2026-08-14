@@ -16,14 +16,33 @@ class AppointmentSerializer(serializers.ModelSerializer):
         veterinarian = attrs.get('veterinarian', getattr(self.instance, 'veterinarian', None))
         service = attrs.get('service', getattr(self.instance, 'service', None))
         scheduled_at = attrs.get('scheduled_at', getattr(self.instance, 'scheduled_at', None))
+        role = getattr(request.user, 'role', None)
 
-        if pet and pet.owner_id != request.user.id:
+        if (
+            pet
+            and role == 'CLIENT'
+            and pet.owner_id != request.user.id
+        ):
             raise serializers.ValidationError({'pet': 'La mascota no pertenece al usuario autenticado.'})
+        if (
+            role == 'CLIENT'
+            and 'status' in attrs
+            and attrs['status'] != (
+                self.instance.status if self.instance else Appointment.Status.PENDING
+            )
+        ):
+            raise serializers.ValidationError({
+                'status': 'Solo un veterinario o administrador puede cambiar el estado de la cita.'
+            })
         if veterinarian and veterinarian.role != 'VET':
             raise serializers.ValidationError({'veterinarian': 'El usuario seleccionado no es veterinario.'})
         if service and not service.is_active:
             raise serializers.ValidationError({'service': 'El servicio seleccionado no está activo.'})
-        if scheduled_at and scheduled_at <= timezone.now():
+        schedule_changed = (
+            not self.instance
+            or scheduled_at != self.instance.scheduled_at
+        )
+        if scheduled_at and schedule_changed and scheduled_at <= timezone.now():
             raise serializers.ValidationError({'scheduled_at': 'La cita debe programarse en el futuro.'})
 
         conflict = Appointment.objects.filter(
